@@ -13,6 +13,16 @@ interface NetworkInfo {
   usableHosts: number
   wildcardMask: string
   networkClass: string
+  binaryIP?: string
+  binaryMask?: string
+  isIPv6?: boolean
+}
+
+interface SubnetExample {
+  name: string
+  cidr: number
+  description: string
+  hosts: number
 }
 
 function App() {
@@ -20,6 +30,17 @@ function App() {
   const [result, setResult] = useState<NetworkInfo | null>(null)
   const [error, setError] = useState('')
   const [isCalculating, setIsCalculating] = useState(false)
+  const [showBinary, setShowBinary] = useState(false)
+  const [copiedValue, setCopiedValue] = useState('')
+
+  const subnetExamples: SubnetExample[] = [
+    { name: 'Class A', cidr: 8, description: 'Large networks', hosts: 16777214 },
+    { name: 'Class B', cidr: 16, description: 'Medium networks', hosts: 65534 },
+    { name: 'Class C', cidr: 24, description: 'Small networks', hosts: 254 },
+    { name: 'Point-to-Point', cidr: 30, description: 'Router links', hosts: 2 },
+    { name: 'Host Route', cidr: 32, description: 'Single host', hosts: 1 },
+    { name: 'Supernet', cidr: 16, description: 'Aggregated routes', hosts: 65534 }
+  ]
 
   const validateIP = (ip: string): boolean => {
     const parts = ip.split('.')
@@ -41,6 +62,22 @@ function App() {
       (num >>> 8) & 0xff,
       num & 0xff
     ].join('.')
+  }
+
+  const ipToBinary = (ip: string): string => {
+    return ip.split('.').map(part => 
+      parseInt(part, 10).toString(2).padStart(8, '0')
+    ).join('.')
+  }
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedValue(label)
+      setTimeout(() => setCopiedValue(''), 2000)
+    } catch (err) {
+      console.error('Failed to copy: ', err)
+    }
   }
 
   const getNetworkClass = (firstOctet: number): string => {
@@ -91,7 +128,10 @@ function App() {
         totalHosts: Math.pow(2, 32 - cidr),
         usableHosts: Math.max(0, Math.pow(2, 32 - cidr) - 2),
         wildcardMask: numberToIP(~mask >>> 0),
-        networkClass: getNetworkClass(ip.split('.')[0] as any)
+        networkClass: getNetworkClass(ip.split('.')[0] as any),
+        binaryIP: ipToBinary(ip),
+        binaryMask: ipToBinary(numberToIP(mask)),
+        isIPv6: false
       }
     }
     
@@ -128,6 +168,10 @@ function App() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
+  }
+
+  const handleExampleClick = (example: SubnetExample) => {
+    setInput(`192.168.1.1/${example.cidr}`)
   }
 
   return (
@@ -207,59 +251,123 @@ function App() {
 
         {/* Clean Results Section */}
         {result && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-            {/* Network Information Card */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow duration-300">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Network Information</h2>
-                <div className="h-1 w-12 bg-blue-500 rounded-full"></div>
-              </div>
-              
-              <div className="space-y-4">
-                {[
-                  { label: 'IP Address', value: result.ipAddress },
-                  { label: 'Subnet Mask', value: result.subnetMask },
-                  { label: 'CIDR Notation', value: `/${result.cidr}` },
-                  { label: 'Network Class', value: result.networkClass },
-                  { label: 'Wildcard Mask', value: result.wildcardMask }
-                ].map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
-                    <span className="text-slate-600 font-medium">{item.label}:</span>
-                    <span className="font-mono text-slate-800 font-semibold bg-blue-100 text-blue-800 px-3 py-1 rounded-lg">
-                      {item.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
+          <div className="space-y-8 mb-12">
+            {/* Binary Toggle */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowBinary(!showBinary)}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {showBinary ? 'Hide' : 'Show'} Binary Representation
+              </button>
             </div>
 
-            {/* Address Range Card */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow duration-300">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Address Range</h2>
-                <div className="h-1 w-12 bg-indigo-500 rounded-full"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Network Information Card */}
+              <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow duration-300">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Network Information</h2>
+                  <div className="h-1 w-12 bg-blue-500 rounded-full"></div>
+                </div>
+                
+                <div className="space-y-4">
+                  {[
+                    { label: 'IP Address', value: result.ipAddress, binary: result.binaryIP },
+                    { label: 'Subnet Mask', value: result.subnetMask, binary: result.binaryMask },
+                    { label: 'CIDR Notation', value: `/${result.cidr}` },
+                    { label: 'Network Class', value: result.networkClass },
+                    { label: 'Wildcard Mask', value: result.wildcardMask }
+                  ].map((item, index) => (
+                    <div key={index} className="p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-600 font-medium">{item.label}:</span>
+                        <button
+                          onClick={() => copyToClipboard(item.value, item.label)}
+                          className="text-blue-500 hover:text-blue-700 transition-colors duration-200"
+                          title="Copy to clipboard"
+                        >
+                          {copiedValue === item.label ? '✓ Copied!' : '📋'}
+                        </button>
+                      </div>
+                      <div className="font-mono text-slate-800 font-semibold bg-blue-100 text-blue-800 px-3 py-2 rounded-lg">
+                        {item.value}
+                      </div>
+                      {showBinary && item.binary && (
+                        <div className="mt-2 font-mono text-xs text-slate-600 bg-slate-200 px-3 py-2 rounded">
+                          {item.binary}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              
-              <div className="space-y-4">
-                {[
-                  { label: 'Network Address', value: result.networkAddress },
-                  { label: 'Broadcast Address', value: result.broadcastAddress },
-                  { label: 'First Host', value: result.firstHost },
-                  { label: 'Last Host', value: result.lastHost },
-                  { label: 'Total Hosts', value: result.totalHosts.toLocaleString() },
-                  { label: 'Usable Hosts', value: result.usableHosts.toLocaleString() }
-                ].map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
-                    <span className="text-slate-600 font-medium">{item.label}:</span>
-                    <span className="font-mono text-slate-800 font-semibold bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg">
-                      {item.value}
-                    </span>
-                  </div>
-                ))}
+
+              {/* Address Range Card */}
+              <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow duration-300">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Address Range</h2>
+                  <div className="h-1 w-12 bg-indigo-500 rounded-full"></div>
+                </div>
+                
+                <div className="space-y-4">
+                  {[
+                    { label: 'Network Address', value: result.networkAddress },
+                    { label: 'Broadcast Address', value: result.broadcastAddress },
+                    { label: 'First Host', value: result.firstHost },
+                    { label: 'Last Host', value: result.lastHost },
+                    { label: 'Total Hosts', value: result.totalHosts.toLocaleString() },
+                    { label: 'Usable Hosts', value: result.usableHosts.toLocaleString() }
+                  ].map((item, index) => (
+                    <div key={index} className="p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-600 font-medium">{item.label}:</span>
+                        <button
+                          onClick={() => copyToClipboard(item.value, item.label)}
+                          className="text-indigo-500 hover:text-indigo-700 transition-colors duration-200"
+                          title="Copy to clipboard"
+                        >
+                          {copiedValue === item.label ? '✓ Copied!' : '📋'}
+                        </button>
+                      </div>
+                      <div className="font-mono text-slate-800 font-semibold bg-indigo-100 text-indigo-800 px-3 py-2 rounded-lg">
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Subnet Examples Section */}
+        <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200 mb-8">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Common Subnet Examples</h2>
+            <div className="h-1 w-12 bg-purple-500 rounded-full"></div>
+            <p className="text-slate-600 mt-4">Click any example to try it out</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subnetExamples.map((example, index) => (
+              <button
+                key={index}
+                onClick={() => handleExampleClick(example)}
+                className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200 hover:from-purple-100 hover:to-indigo-100 transition-all duration-200 text-left group"
+              >
+                <div className="font-bold text-purple-800 group-hover:text-purple-900">
+                  {example.name}
+                </div>
+                <div className="text-sm text-purple-600 mt-1">
+                  /{example.cidr} - {example.description}
+                </div>
+                <div className="text-xs text-slate-500 mt-2">
+                  {example.hosts.toLocaleString()} hosts
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Clean Help Section */}
         <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
@@ -268,7 +376,7 @@ function App() {
             <div className="h-1 w-12 bg-green-500 rounded-full"></div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-4">
               <div className="p-6 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
                 <h3 className="text-slate-800 font-bold text-lg mb-2">Enter IP with CIDR</h3>
@@ -287,6 +395,16 @@ function App() {
               <div className="p-6 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
                 <h3 className="text-slate-800 font-bold text-lg mb-2">All IPv4 Classes</h3>
                 <p className="text-slate-600">Supports CIDR values from /0 to /32 for any network size</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="p-6 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
+                <h3 className="text-slate-800 font-bold text-lg mb-2">Copy to Clipboard</h3>
+                <p className="text-slate-600">Click the 📋 icon next to any value to copy it to your clipboard</p>
+              </div>
+              <div className="p-6 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors duration-200">
+                <h3 className="text-slate-800 font-bold text-lg mb-2">Binary View</h3>
+                <p className="text-slate-600">Toggle binary representation to see IP addresses in binary format</p>
               </div>
             </div>
           </div>
